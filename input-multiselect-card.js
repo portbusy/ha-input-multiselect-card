@@ -250,24 +250,84 @@ class InputMultiselectCard extends HTMLElement {
   }
 
   _submit() {
-    this._hass.callService("input_select", "set_options", {
+    // ── Default action: update the input_multiselect entity ──
+    this._hass.callService("input_multiselect", "set_options", {
       entity_id: this.config.entity,
       options: this._localSelection,
     });
 
-    // ── Fire tap_action via hass-action ──
-    if (this.config.tap_action && this.config.tap_action.action !== "none") {
-      const event = new CustomEvent("hass-action", {
-        detail: { config: this.config, action: "tap_action" },
-        bubbles: true,
-        composed: true,
-      });
-      this.dispatchEvent(event);
+    // ── Execute configured tap_action ──
+    const tapAction = this.config.tap_action;
+    if (tapAction && tapAction.action && tapAction.action !== "none") {
+      this._executeAction(tapAction);
     }
 
     this._isOpen = false;
     this.shadowRoot.getElementById("drop").classList.remove("open");
     this.shadowRoot.getElementById("chev").classList.remove("open");
+  }
+
+  _executeAction(actionConfig) {
+    switch (actionConfig.action) {
+      case "more-info": {
+        const entityId = actionConfig.entity || this.config.entity;
+        const event = new CustomEvent("hass-more-info", {
+          detail: { entityId },
+          bubbles: true,
+          composed: true,
+        });
+        this.dispatchEvent(event);
+        break;
+      }
+      case "navigate":
+        if (actionConfig.navigation_path) {
+          history.pushState(null, "", actionConfig.navigation_path);
+          const navEvent = new CustomEvent("location-changed", {
+            bubbles: true,
+            composed: true,
+          });
+          window.dispatchEvent(navEvent);
+        }
+        break;
+      case "url":
+        if (actionConfig.url_path) {
+          window.open(actionConfig.url_path, "_blank");
+        }
+        break;
+      case "call-service":
+      case "perform-action": {
+        const [domain, service] = (
+          actionConfig.service ||
+          actionConfig.perform_action ||
+          ""
+        ).split(".", 2);
+        if (domain && service) {
+          this._hass.callService(
+            domain,
+            service,
+            actionConfig.data || actionConfig.service_data || {},
+            actionConfig.target || undefined
+          );
+        }
+        break;
+      }
+      case "toggle":
+        this._hass.callService("homeassistant", "toggle", {
+          entity_id: actionConfig.entity || this.config.entity,
+        });
+        break;
+      case "assist":
+        // Fire the assist event used by HA frontend
+        this.dispatchEvent(
+          new CustomEvent("hass-start-voice-assistant", {
+            bubbles: true,
+            composed: true,
+          })
+        );
+        break;
+      default:
+        break;
+    }
   }
 }
 customElements.define("input-multiselect-card", InputMultiselectCard);
