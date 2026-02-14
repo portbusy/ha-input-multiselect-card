@@ -5,86 +5,105 @@ class InputMultiselectCardEditor extends HTMLElement {
   }
 
   setConfig(config) {
-    this._config = config;
+    this._config = config || {};
   }
 
   set hass(hass) {
     this._hass = hass;
-    if (!this._rendered) {
+    if (this._hass && this._config) {
       this._render();
-      this._rendered = true;
     }
-    this._updateElements();
   }
 
   _render() {
+    if (this._rendered) {
+      this._updateValues();
+      return;
+    }
+
     this.shadowRoot.innerHTML = `
       <style>
-        .container { display: flex; flex-direction: column; gap: 16px; padding: 16px 0; }
-        ha-textfield, ha-entity-picker, ha-icon-picker { display: block; }
+        .container { display: flex; flex-direction: column; gap: 16px; padding: 12px 0; }
+        ha-textfield, ha-entity-picker, ha-icon-picker { display: block; width: 100%; }
       </style>
       <div class="container">
         <ha-entity-picker 
-          id="ep-entity" 
+          id="entity" 
           label="Entity (input_multiselect)" 
-          .hass=${this._hass}
-          .value=${this._config?.entity || ''}
+          .hass=${this._hass} 
+          .value=${this._config.entity || ''} 
           .includeDomains=${['input_multiselect']}
           allow-custom-entity>
         </ha-entity-picker>
         
         <ha-textfield 
-          id="tf-name" 
-          label="Custom Name (Optional)"
-          .value=${this._config?.name || ''}>
+          id="name" 
+          label="Custom Name (Optional)" 
+          .value=${this._config.name || ''}>
         </ha-textfield>
         
         <ha-icon-picker 
-          id="ip-icon" 
-          label="Custom Icon (Optional)"
-          .hass=${this._hass}
-          .value=${this._config?.icon || ''}>
+          id="icon" 
+          label="Custom Icon (Optional)" 
+          .hass=${this._hass} 
+          .value=${this._config.icon || ''}>
         </ha-icon-picker>
         
         <ha-entity-picker 
-          id="ep-action" 
+          id="action_entity" 
           label="Action on Submit (Optional Script/Automation)" 
-          .hass=${this._hass}
-          .value=${this._config?.action_entity || ''}
-          .includeDomains=${['script', 'automation', 'scene']}>
+          .hass=${this._hass} 
+          .value=${this._config.action_entity || ''} 
+          .includeDomains=${['script', 'automation', 'scene', 'switch', 'light']}>
         </ha-entity-picker>
       </div>
     `;
 
-    this.shadowRoot.getElementById('ep-entity').addEventListener('value-changed', (e) => this._valueChanged('entity', e.detail.value));
-    this.shadowRoot.getElementById('tf-name').addEventListener('input', (e) => this._valueChanged('name', e.target.value));
-    this.shadowRoot.getElementById('ip-icon').addEventListener('value-changed', (e) => this._valueChanged('icon', e.detail.value));
-    this.shadowRoot.getElementById('ep-action').addEventListener('value-changed', (e) => this._valueChanged('action_entity', e.detail.value));
+    this._rendered = true;
+    this.shadowRoot.addEventListener('value-changed', (ev) => this._handleChanged(ev));
+    this.shadowRoot.addEventListener('input', (ev) => this._handleChanged(ev));
   }
 
-  _updateElements() {
-    if (!this.shadowRoot) return;
-    const fields = {
-      'ep-entity': 'entity',
-      'ip-icon': 'icon',
-      'ep-action': 'action_entity'
-    };
-    for (const [id, key] of Object.entries(fields)) {
-      const el = this.shadowRoot.getElementById(id);
-      if (el) {
-        el.hass = this._hass;
-        el.value = this._config?.[key] || '';
-      }
+  _updateValues() {
+    const entityPicker = this.shadowRoot.getElementById('entity');
+    if (entityPicker) {
+      entityPicker.hass = this._hass;
+      entityPicker.value = this._config.entity || '';
+    }
+    const actionPicker = this.shadowRoot.getElementById('action_entity');
+    if (actionPicker) {
+      actionPicker.hass = this._hass;
+      actionPicker.value = this._config.action_entity || '';
+    }
+    const iconPicker = this.shadowRoot.getElementById('icon');
+    if (iconPicker) {
+      iconPicker.hass = this._hass;
+      iconPicker.value = this._config.icon || '';
+    }
+    const nameField = this.shadowRoot.getElementById('name');
+    if (nameField) {
+      nameField.value = this._config.name || '';
     }
   }
 
-  _valueChanged(key, value) {
-    if (!this._config) return;
+  _handleChanged(ev) {
+    if (!this._config || !this._hass) return;
+
+    const target = ev.target;
+    const id = target.id;
+    const value = ev.detail?.value !== undefined ? ev.detail.value : target.value;
+
+    if (this._config[id] === value) return;
+
     const newConfig = { ...this._config };
-    if (value === '') delete newConfig[key];
-    else newConfig[key] = value;
+    if (!value) {
+      delete newConfig[id];
+    } else {
+      newConfig[id] = value;
+    }
 
     this._config = newConfig;
+
     const event = new CustomEvent('config-changed', {
       detail: { config: newConfig },
       bubbles: true,
@@ -94,7 +113,6 @@ class InputMultiselectCardEditor extends HTMLElement {
   }
 }
 customElements.define('input-multiselect-card-editor', InputMultiselectCardEditor);
-
 
 class InputMultiselectCard extends HTMLElement {
   constructor() {
