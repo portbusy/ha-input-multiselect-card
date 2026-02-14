@@ -1,4 +1,9 @@
 class InputMultiselectCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+  }
+
   setConfig(config) {
     this._config = config;
   }
@@ -9,63 +14,83 @@ class InputMultiselectCardEditor extends HTMLElement {
       this._render();
       this._rendered = true;
     }
-    this.querySelectorAll('ha-entity-picker, ha-icon-picker').forEach(el => el.hass = hass);
+    this._updateElements();
   }
 
   _render() {
-    this.innerHTML = `
-      <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 16px;">
+    this.shadowRoot.innerHTML = `
+      <style>
+        .container { display: flex; flex-direction: column; gap: 16px; padding: 16px 0; }
+        ha-textfield, ha-entity-picker, ha-icon-picker { display: block; }
+      </style>
+      <div class="container">
         <ha-entity-picker 
           id="ep-entity" 
-          label="Entity (input_multiselect)*" 
-          include-domains='["input_multiselect"]'>
+          label="Entity (input_multiselect)" 
+          .hass=${this._hass}
+          .value=${this._config?.entity || ''}
+          .includeDomains=${['input_multiselect']}
+          allow-custom-entity>
         </ha-entity-picker>
         
         <ha-textfield 
           id="tf-name" 
-          label="Custom Name (Optional)">
+          label="Custom Name (Optional)"
+          .value=${this._config?.name || ''}>
         </ha-textfield>
         
         <ha-icon-picker 
           id="ip-icon" 
-          label="Custom Icon (Optional)">
+          label="Custom Icon (Optional)"
+          .hass=${this._hass}
+          .value=${this._config?.icon || ''}>
         </ha-icon-picker>
         
         <ha-entity-picker 
           id="ep-action" 
           label="Action on Submit (Optional Script/Automation)" 
-          include-domains='["script", "automation", "scene"]'>
+          .hass=${this._hass}
+          .value=${this._config?.action_entity || ''}
+          .includeDomains=${['script', 'automation', 'scene']}>
         </ha-entity-picker>
       </div>
     `;
 
-    const epEntity = this.querySelector('#ep-entity');
-    epEntity.value = this._config.entity || '';
-    epEntity.addEventListener('value-changed', (e) => this._updateConfig('entity', e.detail.value));
-
-    const tfName = this.querySelector('#tf-name');
-    tfName.value = this._config.name || '';
-    tfName.addEventListener('input', (e) => this._updateConfig('name', e.target.value));
-
-    const ipIcon = this.querySelector('#ip-icon');
-    ipIcon.value = this._config.icon || '';
-    ipIcon.addEventListener('value-changed', (e) => this._updateConfig('icon', e.detail.value));
-
-    const epAction = this.querySelector('#ep-action');
-    epAction.value = this._config.action_entity || '';
-    epAction.addEventListener('value-changed', (e) => this._updateConfig('action_entity', e.detail.value));
+    this.shadowRoot.getElementById('ep-entity').addEventListener('value-changed', (e) => this._valueChanged('entity', e.detail.value));
+    this.shadowRoot.getElementById('tf-name').addEventListener('input', (e) => this._valueChanged('name', e.target.value));
+    this.shadowRoot.getElementById('ip-icon').addEventListener('value-changed', (e) => this._valueChanged('icon', e.detail.value));
+    this.shadowRoot.getElementById('ep-action').addEventListener('value-changed', (e) => this._valueChanged('action_entity', e.detail.value));
   }
 
-  _updateConfig(key, value) {
+  _updateElements() {
+    if (!this.shadowRoot) return;
+    const fields = {
+      'ep-entity': 'entity',
+      'ip-icon': 'icon',
+      'ep-action': 'action_entity'
+    };
+    for (const [id, key] of Object.entries(fields)) {
+      const el = this.shadowRoot.getElementById(id);
+      if (el) {
+        el.hass = this._hass;
+        el.value = this._config?.[key] || '';
+      }
+    }
+  }
+
+  _valueChanged(key, value) {
     if (!this._config) return;
     const newConfig = { ...this._config };
-    if (value === '' || value === undefined) {
-      delete newConfig[key];
-    } else {
-      newConfig[key] = value;
-    }
+    if (value === '') delete newConfig[key];
+    else newConfig[key] = value;
+
     this._config = newConfig;
-    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config: newConfig }, bubbles: true, composed: true }));
+    const event = new CustomEvent('config-changed', {
+      detail: { config: newConfig },
+      bubbles: true,
+      composed: true,
+    });
+    this.dispatchEvent(event);
   }
 }
 customElements.define('input-multiselect-card-editor', InputMultiselectCardEditor);
@@ -76,7 +101,7 @@ class InputMultiselectCard extends HTMLElement {
     super();
     this.attachShadow({ mode: 'open' });
     this._isOpen = false;
-    this._localSelection = []; // Stato locale per le spunte
+    this._localSelection = [];
     this._isRendered = false;
   }
 
@@ -85,19 +110,20 @@ class InputMultiselectCard extends HTMLElement {
   }
 
   static getStubConfig() {
-    return { entity: "" };
+    return {
+        entity: "",
+        name: "",
+        icon: ""
+    };
   }
 
   setConfig(config) {
-    if (!config.entity || !config.entity.startsWith('input_multiselect.')) {
-      throw new Error('Please select a valid input_multiselect entity.');
-    }
     this.config = { ...config };
   }
 
   set hass(hass) {
     this._hass = hass;
-    if (!this.config || !this.config.entity) return;
+    if (!this.config?.entity) return;
 
     const stateObj = hass.states[this.config.entity];
     if (!stateObj) return;
@@ -110,13 +136,6 @@ class InputMultiselectCard extends HTMLElement {
       this._localSelection = [...this._selectedOptions];
     }
 
-    // Forza il render totale se le opzioni backend sono cambiate (es. aggiunta una stanza)
-    const currentOptionsStr = JSON.stringify(this._options);
-    if (this._lastOptionsStr !== currentOptionsStr) {
-      this._lastOptionsStr = currentOptionsStr;
-      this._isRendered = false;
-    }
-
     if (!this._isRendered) {
       this._render();
       this._isRendered = true;
@@ -127,131 +146,58 @@ class InputMultiselectCard extends HTMLElement {
 
   _render() {
     const icon = this.config.icon || this._stateObj.attributes.icon || 'mdi:format-list-checks';
-    const name = this.config.name || this._stateObj.attributes.friendly_name || this.config.entity;
+    const name = this.config.name || this._stateObj.attributes.friendly_name || 'Multiselect';
 
     this.shadowRoot.innerHTML = `
       <style>
-        :host {
-          display: block;
-          --bc-background: var(--card-background-color, var(--ha-card-background, #fff));
-          --bc-border-radius: var(--bubble-border-radius, 24px);
-        }
+        :host { display: block; }
         .card {
-          background: var(--bc-background);
-          border-radius: var(--bc-border-radius);
-          box-shadow: var(--ha-card-box-shadow, none);
+          background: var(--ha-card-background, var(--card-background-color, white));
+          border-radius: var(--bubble-border-radius, 24px);
           padding: 12px;
           display: flex;
           flex-direction: column;
           overflow: hidden;
           transition: all 0.3s ease;
         }
-        .header {
-          display: flex;
-          align-items: center;
-          cursor: pointer;
-          user-select: none;
-        }
+        .header { display: flex; align-items: center; cursor: pointer; user-select: none; }
         .icon-container {
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          width: 42px;
-          height: 42px;
-          border-radius: 50%;
-          background: var(--primary-color);
-          color: var(--text-primary-color, #fff);
-          margin-right: 12px;
+          display: flex; justify-content: center; align-items: center;
+          width: 42px; height: 42px; border-radius: 50%;
+          background: var(--primary-color); color: white; margin-right: 12px;
         }
-        .info {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-        }
-        .name {
-          font-weight: 600;
-          font-size: 14px;
-          color: var(--primary-text-color);
-        }
-        .state {
-          font-size: 12px;
-          color: var(--secondary-text-color);
-        }
-        .chevron {
-          transition: transform 0.3s ease;
-          color: var(--secondary-text-color);
-        }
-        .chevron.open {
-          transform: rotate(180deg);
-        }
+        .info { flex: 1; display: flex; flex-direction: column; }
+        .name { font-weight: 600; font-size: 14px; color: var(--primary-text-color); }
+        .state { font-size: 12px; color: var(--secondary-text-color); }
+        .chevron { transition: transform 0.3s ease; color: var(--secondary-text-color); }
+        .chevron.open { transform: rotate(180deg); }
         .dropdown {
-          max-height: 0;
-          overflow: hidden;
-          transition: max-height 0.4s ease;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
+          max-height: 0; overflow: hidden; transition: max-height 0.4s ease;
+          display: flex; flex-direction: column; gap: 8px;
         }
-        .dropdown.open {
-          max-height: 800px;
-          margin-top: 12px;
-        }
+        .dropdown.open { max-height: 800px; margin-top: 12px; }
         .option-row {
-          display: flex;
-          align-items: center;
-          background: var(--secondary-background-color);
-          padding: 12px 14px;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: background 0.2s;
+          display: flex; align-items: center; background: var(--secondary-background-color);
+          padding: 12px 14px; border-radius: 12px; cursor: pointer;
         }
-        .option-row:active {
-          background: var(--divider-color);
-        }
-        .option-row input[type="checkbox"] {
-          margin-right: 14px;
-          width: 18px;
-          height: 18px;
-          cursor: pointer;
-          accent-color: var(--primary-color);
-        }
-        .option-name {
-          font-size: 14px;
-          color: var(--primary-text-color);
-        }
+        .option-row input[type="checkbox"] { margin-right: 14px; width: 18px; height: 18px; accent-color: var(--primary-color); }
         .submit-btn {
-          background: var(--primary-color);
-          color: var(--text-primary-color, #ffffff);
-          border: none;
-          border-radius: 12px;
-          padding: 14px;
-          margin-top: 4px;
-          font-size: 14px;
-          font-weight: bold;
-          text-transform: uppercase;
-          cursor: pointer;
-          transition: all 0.2s ease;
+          background: var(--primary-color); color: white; border: none; border-radius: 12px;
+          padding: 14px; margin-top: 4px; font-size: 14px; font-weight: bold;
+          text-transform: uppercase; cursor: pointer; transition: all 0.2s ease;
         }
-        .submit-btn:disabled {
-          background: var(--disabled-color, #bdbdbd);
-          color: rgba(255,255,255, 0.7);
-          cursor: not-allowed;
-          opacity: 0.6;
-        }
+        .submit-btn:disabled { background: var(--disabled-color, #bdbdbd); opacity: 0.6; cursor: not-allowed; }
       </style>
 
       <div class="card">
         <div class="header" id="toggle-btn">
-          <div class="icon-container">
-            <ha-icon icon="${icon}"></ha-icon>
-          </div>
+          <div class="icon-container"><ha-icon icon="${icon}"></ha-icon></div>
           <div class="info">
             <div class="name">${name}</div>
-            <div class="state" id="state-text">${this._stateObj.state}</div>
+            <div id="state-text" class="state"></div>
           </div>
           <ha-icon icon="mdi:chevron-down" class="chevron" id="chevron-icon"></ha-icon>
         </div>
-        
         <div class="dropdown" id="dropdown-content">
           <div id="options-container" style="display: flex; flex-direction: column; gap: 8px;"></div>
           <button id="submit-btn" class="submit-btn" disabled>Submit</button>
@@ -261,51 +207,40 @@ class InputMultiselectCard extends HTMLElement {
 
     this.shadowRoot.getElementById('toggle-btn').addEventListener('click', () => {
       this._isOpen = !this._isOpen;
-
-      if (this._isOpen) {
-        this._localSelection = [...this._selectedOptions];
-        this._updateUI();
-      }
-
+      if (this._isOpen) this._localSelection = [...this._selectedOptions];
       this.shadowRoot.getElementById('dropdown-content').classList.toggle('open', this._isOpen);
       this.shadowRoot.getElementById('chevron-icon').classList.toggle('open', this._isOpen);
+      this._updateUI();
     });
 
     this.shadowRoot.getElementById('submit-btn').addEventListener('click', () => this._submit());
+    this._createOptionRows();
+  }
 
+  _createOptionRows() {
     const container = this.shadowRoot.getElementById('options-container');
+    container.innerHTML = '';
     this._options.forEach(option => {
       const row = document.createElement('div');
       row.className = 'option-row';
-      row.innerHTML = `
-        <input type="checkbox" id="chk-${option}">
-        <span class="option-name">${option}</span>
-      `;
-
+      row.innerHTML = `<input type="checkbox" id="chk-${option}"><span class="option-name">${option}</span>`;
       row.addEventListener('click', (e) => {
-        const checkbox = row.querySelector('input');
-        if (e.target.tagName !== 'INPUT') {
-          checkbox.checked = !checkbox.checked;
-        }
-        this._handleToggle(option, checkbox.checked);
+        const chk = row.querySelector('input');
+        if (e.target.tagName !== 'INPUT') chk.checked = !chk.checked;
+        this._handleToggle(option, chk.checked);
       });
-
       container.appendChild(row);
     });
   }
 
   _updateUI() {
-    if (!this.shadowRoot.getElementById('state-text')) return;
-
-    this.shadowRoot.getElementById('state-text').innerText = this._stateObj.state;
+    const stateText = this.shadowRoot.getElementById('state-text');
+    if (stateText) stateText.innerText = this._stateObj.state;
 
     this._options.forEach(option => {
       const chk = this.shadowRoot.getElementById(`chk-${option}`);
-      if (chk) {
-        chk.checked = this._localSelection.includes(option);
-      }
+      if (chk) chk.checked = this._localSelection.includes(option);
     });
-
     this._evaluateSubmitButton();
   }
 
@@ -319,11 +254,7 @@ class InputMultiselectCard extends HTMLElement {
   }
 
   _evaluateSubmitButton() {
-    const sortedOriginal = [...this._selectedOptions].sort();
-    const sortedLocal = [...this._localSelection].sort();
-
-    const isDifferent = JSON.stringify(sortedOriginal) !== JSON.stringify(sortedLocal);
-
+    const isDifferent = JSON.stringify([...this._selectedOptions].sort()) !== JSON.stringify([...this._localSelection].sort());
     const btn = this.shadowRoot.getElementById('submit-btn');
     if (btn) btn.disabled = !isDifferent;
   }
@@ -335,23 +266,16 @@ class InputMultiselectCard extends HTMLElement {
     });
 
     if (this.config.action_entity) {
-      const domain = this.config.action_entity.split('.')[0];
-      if (domain === 'script') {
-        this._hass.callService('script', this.config.action_entity.split('.')[1]);
-      } else if (domain === 'automation') {
-        this._hass.callService('automation', 'trigger', { entity_id: this.config.action_entity });
-      } else {
-        this._hass.callService('homeassistant', 'turn_on', { entity_id: this.config.action_entity });
-      }
+        const [domain, service] = this.config.action_entity.split('.');
+        const srv = domain === 'automation' ? 'trigger' : (domain === 'script' ? service : 'turn_on');
+        this._hass.callService(domain === 'script' ? 'script' : (domain === 'automation' ? 'automation' : 'homeassistant'), srv, { entity_id: this.config.action_entity });
     }
 
     this._isOpen = false;
     this.shadowRoot.getElementById('dropdown-content').classList.remove('open');
     this.shadowRoot.getElementById('chevron-icon').classList.remove('open');
-    this.shadowRoot.getElementById('submit-btn').disabled = true;
   }
 }
-
 customElements.define('input-multiselect-card', InputMultiselectCard);
 
 window.customCards = window.customCards || [];
@@ -359,5 +283,5 @@ window.customCards.push({
   type: "input-multiselect-card",
   name: "Input Multiselect",
   preview: true,
-  description: "A dropdown card with multiple checkboxes."
+  description: "A dropdown card with checkboxes for multiselect entities."
 });
