@@ -7,7 +7,7 @@ class InputMultiselectCardEditor extends HTMLElement {
       {
         name: "entity",
         required: true,
-        selector: { entity: { domain: "input_multiselect" } },
+        selector: { entity: {} },
       },
       {
         name: "name",
@@ -26,17 +26,7 @@ class InputMultiselectCardEditor extends HTMLElement {
         schema: [
           {
             name: "tap_action",
-            label: "Tap action",
-            selector: { "ui-action": {} },
-          },
-          {
-            name: "hold_action",
-            label: "Hold action",
-            selector: { "ui-action": {} },
-          },
-          {
-            name: "double_tap_action",
-            label: "Double tap action",
+            label: "Action on Submit",
             selector: { "ui-action": {} },
           },
         ],
