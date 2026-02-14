@@ -7,7 +7,7 @@ class InputMultiselectCardEditor extends HTMLElement {
       {
         name: "entity",
         required: true,
-        selector: { entity: { domain: "input_select" } },
+        selector: { entity: { domain: "input_multiselect" } },
       },
       {
         name: "name",
