@@ -1,72 +1,114 @@
+// ── Editor ──────────────────────────────────────────────────────────
 class InputMultiselectCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this._schema = [
+      {
+        name: "entity",
+        required: true,
+        selector: { entity: { domain: "input_select" } },
+      },
+      {
+        name: "name",
+        selector: { text: {} },
+      },
+      {
+        name: "icon",
+        selector: { icon: {} },
+        context: { icon_entity: "entity" },
+      },
+      {
+        type: "expandable",
+        name: "",
+        title: "Interactions",
+        flatten: true,
+        schema: [
+          {
+            name: "tap_action",
+            label: "Tap action",
+            selector: { "ui-action": {} },
+          },
+          {
+            name: "hold_action",
+            label: "Hold action",
+            selector: { "ui-action": {} },
+          },
+          {
+            name: "double_tap_action",
+            label: "Double tap action",
+            selector: { "ui-action": {} },
+          },
+        ],
+      },
+    ];
+  }
+
   setConfig(config) {
     this._config = config;
+    if (this._form) this._form.data = config;
   }
 
   set hass(hass) {
     this._hass = hass;
-    this._render();
+    if (this._form) {
+      this._form.hass = hass;
+    } else {
+      this._buildForm();
+    }
   }
 
-  _render() {
-    if (!this._hass || !this._config || this._rendered) return;
+  _buildForm() {
+    if (!this._hass || !this._config) return;
 
-    const schema = [
-      { name: "entity", selector: { entity: { domain: "input_multiselect" } } },
-      { name: "name", selector: { text: {} } },
-      { name: "icon", selector: { icon: {} } },
-      {
-        name: "tap_action",
-        label: "Action on Submit",
-        selector: { ui_action: {} }
-      }
-    ];
+    const form = document.createElement("ha-form");
+    form.hass = this._hass;
+    form.data = this._config;
+    form.schema = this._schema;
+    form.computeLabel = (s) => s.label || s.name || "";
 
-    this.shadowRoot.innerHTML = `
-      <ha-form
-        .hass=${this._hass}
-        .data=${this._config}
-        .schema=${schema}
-        .computeLabel=${(s) => s.label || s.name}
-      ></ha-form>
-    `;
-
-    this.shadowRoot.querySelector("ha-form").addEventListener("value-changed", (ev) => {
-      this.dispatchEvent(new CustomEvent("config-changed", {
-        detail: { config: ev.detail.value },
-        bubbles: true,
-        composed: true,
-      }));
+    form.addEventListener("value-changed", (ev) => {
+      this.dispatchEvent(
+        new CustomEvent("config-changed", {
+          detail: { config: ev.detail.value },
+          bubbles: true,
+          composed: true,
+        })
+      );
     });
-    this._rendered = true;
-  }
 
-  constructor() {
-    super();
-    this.attachShadow({ mode: 'open' });
+    this.shadowRoot.innerHTML = "";
+    this.shadowRoot.appendChild(form);
+    this._form = form;
   }
 }
-customElements.define('input-multiselect-card-editor', InputMultiselectCardEditor);
+customElements.define("input-multiselect-card-editor", InputMultiselectCardEditor);
 
 
+// ── Card ────────────────────────────────────────────────────────────
 class InputMultiselectCard extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: 'open' });
+    this.attachShadow({ mode: "open" });
     this._isOpen = false;
     this._localSelection = [];
   }
 
-  static getConfigElement() { return document.createElement('input-multiselect-card-editor'); }
-  static getStubConfig() { return { entity: "", name: "", icon: "", tap_action: { action: "none" } }; }
+  static getConfigElement() {
+    return document.createElement("input-multiselect-card-editor");
+  }
 
-  setConfig(config) { this.config = config; }
+  static getStubConfig() {
+    return { entity: "", name: "", icon: "", tap_action: { action: "none" } };
+  }
+
+  setConfig(config) {
+    this.config = config;
+  }
 
   set hass(hass) {
-    const oldState = this._stateObj;
     this._hass = hass;
     this._stateObj = hass.states[this.config.entity];
-
     if (!this._stateObj) return;
 
     this._options = this._stateObj.attributes.options || [];
@@ -84,9 +126,6 @@ class InputMultiselectCard extends HTMLElement {
   }
 
   _render() {
-    const icon = this.config.icon || this._stateObj.attributes.icon || 'mdi:format-list-checks';
-    const name = this.config.name || this._stateObj.attributes.friendly_name || 'Multiselect';
-
     this.shadowRoot.innerHTML = `
       <style>
         .card {
@@ -125,9 +164,9 @@ class InputMultiselectCard extends HTMLElement {
 
       <div class="card">
         <div class="header" id="toggle">
-          <div class="icon-container"><ha-icon icon="${icon}"></ha-icon></div>
+          <div class="icon-container"><ha-icon id="card-icon"></ha-icon></div>
           <div class="info">
-            <div class="name">${name}</div>
+            <div id="card-name" class="name"></div>
             <div id="status" class="state"></div>
           </div>
           <ha-icon icon="mdi:chevron-down" class="chevron" id="chev"></ha-icon>
@@ -139,24 +178,32 @@ class InputMultiselectCard extends HTMLElement {
       </div>
     `;
 
-    this.shadowRoot.getElementById('toggle').onclick = () => {
+    // ── Toggle dropdown ──
+    this.shadowRoot.getElementById("toggle").onclick = () => {
       this._isOpen = !this._isOpen;
-      this.shadowRoot.getElementById('drop').classList.toggle('open', this._isOpen);
-      this.shadowRoot.getElementById('chev').classList.toggle('open', this._isOpen);
+      this.shadowRoot.getElementById("drop").classList.toggle("open", this._isOpen);
+      this.shadowRoot.getElementById("chev").classList.toggle("open", this._isOpen);
       if (this._isOpen) this._localSelection = [...this._selectedOptions];
       this._updateUI();
     };
 
-    this.shadowRoot.getElementById('sub').onclick = () => this._submit();
+    // ── Submit ──
+    this.shadowRoot.getElementById("sub").onclick = () => this._submit();
 
-    const list = this.shadowRoot.getElementById('list');
-    this._options.forEach(opt => {
-      const row = document.createElement('div');
-      row.className = 'option-row';
-      row.innerHTML = `<input type="checkbox" id="c-${opt}"><span>${opt}</span>`;
+    // ── Build options list ──
+    this._buildOptionList();
+  }
+
+  _buildOptionList() {
+    const list = this.shadowRoot.getElementById("list");
+    list.innerHTML = "";
+    this._options.forEach((opt) => {
+      const row = document.createElement("div");
+      row.className = "option-row";
+      row.innerHTML = `<input type="checkbox" data-opt="${opt}"><span>${opt}</span>`;
       row.onclick = (e) => {
-        const cb = row.querySelector('input');
-        if (e.target.tagName !== 'INPUT') cb.checked = !cb.checked;
+        const cb = row.querySelector("input");
+        if (e.target.tagName !== "INPUT") cb.checked = !cb.checked;
         this._handleToggle(opt, cb.checked);
       };
       list.appendChild(row);
@@ -164,46 +211,80 @@ class InputMultiselectCard extends HTMLElement {
   }
 
   _updateUI() {
-    this.shadowRoot.getElementById('status').innerText = this._stateObj.state;
-    this._options.forEach(opt => {
-      const cb = this.shadowRoot.getElementById(`c-${opt}`);
+    // ── Dynamic icon & name ──
+    const icon =
+      this.config.icon ||
+      this._stateObj.attributes.icon ||
+      "mdi:format-list-checks";
+    const name =
+      this.config.name ||
+      this._stateObj.attributes.friendly_name ||
+      "Multiselect";
+
+    const iconEl = this.shadowRoot.getElementById("card-icon");
+    if (iconEl) iconEl.setAttribute("icon", icon);
+
+    const nameEl = this.shadowRoot.getElementById("card-name");
+    if (nameEl) nameEl.textContent = name;
+
+    // ── Status ──
+    const statusEl = this.shadowRoot.getElementById("status");
+    if (statusEl) statusEl.textContent = this._stateObj.state;
+
+    // ── Rebuild option list if options changed ──
+    const checkboxes = this.shadowRoot.querySelectorAll("#list input[data-opt]");
+    const currentOpts = Array.from(checkboxes).map((cb) => cb.dataset.opt);
+    if (JSON.stringify(currentOpts) !== JSON.stringify(this._options)) {
+      this._buildOptionList();
+    }
+
+    // ── Check states ──
+    this._options.forEach((opt) => {
+      const cb = this.shadowRoot.querySelector(`input[data-opt="${opt}"]`);
       if (cb) cb.checked = this._localSelection.includes(opt);
     });
-    const changed = JSON.stringify([...this._selectedOptions].sort()) !== JSON.stringify([...this._localSelection].sort());
-    this.shadowRoot.getElementById('sub').disabled = !changed;
+
+    const changed =
+      JSON.stringify([...this._selectedOptions].sort()) !==
+      JSON.stringify([...this._localSelection].sort());
+    this.shadowRoot.getElementById("sub").disabled = !changed;
   }
 
   _handleToggle(opt, isChecked) {
-    if (isChecked) { if (!this._localSelection.includes(opt)) this._localSelection.push(opt); }
-    else { this._localSelection = this._localSelection.filter(o => o !== opt); }
+    if (isChecked) {
+      if (!this._localSelection.includes(opt)) this._localSelection.push(opt);
+    } else {
+      this._localSelection = this._localSelection.filter((o) => o !== opt);
+    }
     this._updateUI();
   }
 
   _submit() {
-    this._hass.callService('input_multiselect', 'set_options', {
+    this._hass.callService("input_select", "set_options", {
       entity_id: this.config.entity,
-      options: this._localSelection
+      options: this._localSelection,
     });
 
+    // ── Fire tap_action via hass-action ──
     if (this.config.tap_action && this.config.tap_action.action !== "none") {
-        // Usiamo il motore interno di HA per gestire l'azione (navigazione, chiamata servizio, ecc)
-        const event = new CustomEvent("hass-action", {
-            detail: { config: this.config, action: "tap_action" },
-            bubbles: true, composed: true
-        });
-        this.dispatchEvent(event);
+      const event = new CustomEvent("hass-action", {
+        detail: { config: this.config, action: "tap_action" },
+        bubbles: true,
+        composed: true,
+      });
+      this.dispatchEvent(event);
     }
 
     this._isOpen = false;
-    this.shadowRoot.getElementById('drop').classList.remove('open');
-    this.shadowRoot.getElementById('chev').classList.remove('open');
+    this.shadowRoot.getElementById("drop").classList.remove("open");
+    this.shadowRoot.getElementById("chev").classList.remove("open");
   }
 }
-customElements.define('input-multiselect-card', InputMultiselectCard);
+customElements.define("input-multiselect-card", InputMultiselectCard);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "input-multiselect-card",
   name: "Input Multiselect",
-  description: "Advanced multiselect card with UI action support."
+  description: "Advanced multiselect card with UI action support.",
 });
