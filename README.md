@@ -1,5 +1,8 @@
 # Input Multiselect Card
 
+![Input Multiselect Card Preview](preview.png)
+
+
 A custom Lovelace card for Home Assistant designed to interact with `input_multiselect` entities.
 
 By default, Home Assistant does not provide a UI element to select multiple options simultaneously. This card bridges that gap by providing a clean, expandable dropdown menu with checkboxes. It features a modern, rounded design inspired by Bubble Card, making it perfectly suited for mobile-first dashboards.
