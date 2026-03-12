@@ -7,7 +7,7 @@ class InputMultiselectCardEditor extends HTMLElement {
       {
         name: "entity",
         required: true,
-        selector: { entity: {} },
+        selector: { entity: { domain: "input_multiselect" } },
       },
       {
         name: "name",
@@ -17,6 +17,16 @@ class InputMultiselectCardEditor extends HTMLElement {
         name: "icon",
         selector: { icon: {} },
         context: { icon_entity: "entity" },
+      },
+      {
+        name: "auto_submit",
+        label: "Auto-Submit (Save instantly when clicking options)",
+        selector: { boolean: {} },
+      },
+      {
+        name: "show_chips",
+        label: "Show selections as Chips",
+        selector: { boolean: {} },
       },
       {
         type: "expandable",
@@ -89,7 +99,7 @@ class InputMultiselectCard extends HTMLElement {
   }
 
   static getStubConfig() {
-    return { entity: "", name: "", icon: "", tap_action: { action: "none" } };
+    return { entity: "", name: "", icon: "", auto_submit: false, show_chips: false, tap_action: { action: "none" } };
   }
 
   setConfig(config) {
@@ -118,9 +128,7 @@ class InputMultiselectCard extends HTMLElement {
   _render() {
     this.shadowRoot.innerHTML = `
       <style>
-        .card {
-          background: var(--ha-card-background, var(--card-background-color, white));
-          border-radius: var(--bubble-border-radius, 24px);
+        ha-card {
           padding: 12px;
           overflow: hidden;
         }
@@ -136,10 +144,34 @@ class InputMultiselectCard extends HTMLElement {
         .chevron { transition: transform 0.3s ease; color: var(--secondary-text-color); }
         .chevron.open { transform: rotate(180deg); }
         .dropdown {
-          max-height: 0; overflow: hidden; transition: max-height 0.4s ease;
+          max-height: 0; overflow-y: hidden; transition: max-height 0.4s ease;
           display: flex; flex-direction: column; gap: 8px;
         }
-        .dropdown.open { max-height: 1000px; margin-top: 12px; }
+        .dropdown.open { 
+          max-height: 300px;
+          margin-top: 12px;
+          overflow-y: auto;
+          scrollbar-width: thin;
+          scrollbar-color: var(--scrollbar-thumb-color, var(--primary-color)) transparent;
+        }
+        .dropdown::-webkit-scrollbar { width: 6px; }
+        .dropdown::-webkit-scrollbar-track { background: transparent; }
+        .dropdown::-webkit-scrollbar-thumb { 
+          background-color: var(--scrollbar-thumb-color, var(--primary-color)); 
+          border-radius: 4px; 
+        }
+        .chips-container {
+          display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;
+        }
+        .chip {
+          background: var(--primary-color); color: white;
+          font-size: 11px; font-weight: bold; border-radius: 12px;
+          padding: 2px 8px; display: inline-flex; align-items: center; gap: 4px;
+        }
+        .chip-remove {
+          cursor: pointer; opacity: 0.8; font-size: 10px; padding: 2px;
+        }
+        .chip-remove:hover { opacity: 1; color: #ff5252; }
         .option-row {
           display: flex; align-items: center; background: var(--secondary-background-color);
           padding: 12px; border-radius: 12px; cursor: pointer;
@@ -152,12 +184,13 @@ class InputMultiselectCard extends HTMLElement {
         .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
       </style>
 
-      <div class="card">
+      <ha-card>
         <div class="header" id="toggle">
           <div class="icon-container"><ha-icon id="card-icon"></ha-icon></div>
           <div class="info">
             <div id="card-name" class="name"></div>
             <div id="status" class="state"></div>
+            <div id="chips" class="chips-container" style="display: none;"></div>
           </div>
           <ha-icon icon="mdi:chevron-down" class="chevron" id="chev"></ha-icon>
         </div>
@@ -165,7 +198,7 @@ class InputMultiselectCard extends HTMLElement {
           <div id="list"></div>
           <button id="sub" class="submit-btn" disabled>SUBMIT</button>
         </div>
-      </div>
+      </ha-card>
     `;
 
     // ── Toggle dropdown ──
@@ -217,9 +250,43 @@ class InputMultiselectCard extends HTMLElement {
     const nameEl = this.shadowRoot.getElementById("card-name");
     if (nameEl) nameEl.textContent = name;
 
-    // ── Status ──
+    // ── Status vs Chips ──
     const statusEl = this.shadowRoot.getElementById("status");
-    if (statusEl) statusEl.textContent = this._stateObj.state;
+    const chipsEl = this.shadowRoot.getElementById("chips");
+    
+    if (this.config.show_chips) {
+      if (statusEl) statusEl.style.display = "none";
+      if (chipsEl) {
+        chipsEl.style.display = "flex";
+        chipsEl.innerHTML = ""; // clear old chips
+        
+        if (this._localSelection.length === 0) {
+          chipsEl.innerHTML = `<span class="state" style="font-size:11px;">0 selected</span>`;
+        } else {
+          // Render chips
+          this._localSelection.forEach(opt => {
+            const chip = document.createElement("div");
+            chip.className = "chip";
+            chip.innerHTML = `
+              <span>${opt}</span>
+              <span class="chip-remove" title="Remove">✕</span>
+            `;
+            // Handle clicking the '✕' immediately
+            chip.querySelector(".chip-remove").onclick = (e) => {
+              e.stopPropagation(); // prevent toggling the main accordion dropdown
+              this._handleToggle(opt, false);
+            };
+            chipsEl.appendChild(chip);
+          });
+        }
+      }
+    } else {
+      if (chipsEl) chipsEl.style.display = "none";
+      if (statusEl) {
+        statusEl.style.display = "block";
+        statusEl.textContent = this._stateObj.state;
+      }
+    }
 
     // ── Rebuild option list if options changed ──
     const checkboxes = this.shadowRoot.querySelectorAll("#list input[data-opt]");
@@ -234,10 +301,16 @@ class InputMultiselectCard extends HTMLElement {
       if (cb) cb.checked = this._localSelection.includes(opt);
     });
 
-    const changed =
-      JSON.stringify([...this._selectedOptions].sort()) !==
-      JSON.stringify([...this._localSelection].sort());
-    this.shadowRoot.getElementById("sub").disabled = !changed;
+    const subBtn = this.shadowRoot.getElementById("sub");
+    if (this.config.auto_submit) {
+      subBtn.style.display = "none";
+    } else {
+      subBtn.style.display = "block";
+      const changed =
+        JSON.stringify([...this._selectedOptions].sort()) !==
+        JSON.stringify([...this._localSelection].sort());
+      subBtn.disabled = !changed;
+    }
   }
 
   _handleToggle(opt, isChecked) {
@@ -246,10 +319,15 @@ class InputMultiselectCard extends HTMLElement {
     } else {
       this._localSelection = this._localSelection.filter((o) => o !== opt);
     }
+    
     this._updateUI();
+    
+    if (this.config.auto_submit) {
+      this._submit(false); // auto-save without closing the dropdown automatically
+    }
   }
 
-  _submit() {
+  _submit(closeDropdown = true) {
     // ── Default action: update the input_multiselect entity ──
     this._hass.callService("input_multiselect", "set_options", {
       entity_id: this.config.entity,
@@ -262,9 +340,11 @@ class InputMultiselectCard extends HTMLElement {
       this._executeAction(tapAction);
     }
 
-    this._isOpen = false;
-    this.shadowRoot.getElementById("drop").classList.remove("open");
-    this.shadowRoot.getElementById("chev").classList.remove("open");
+    if (closeDropdown) {
+      this._isOpen = false;
+      this.shadowRoot.getElementById("drop").classList.remove("open");
+      this.shadowRoot.getElementById("chev").classList.remove("open");
+    }
   }
 
   _executeAction(actionConfig) {
