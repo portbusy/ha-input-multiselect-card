@@ -266,10 +266,10 @@ class InputMultiselectCard extends HTMLElement {
     this._options.forEach((opt) => {
       const row = document.createElement("div");
       row.className = "option-row";
-      row.innerHTML = `<input type="checkbox" data-opt="${opt}"><span>${opt}</span>`;
+      row.innerHTML = `<input type="checkbox" data-opt="${opt}" style="pointer-events: none;"><span>${opt}</span>`;
       row.onclick = (e) => {
         const cb = row.querySelector("input");
-        if (e.target.tagName !== "INPUT") cb.checked = !cb.checked;
+        cb.checked = !cb.checked;
         this._handleToggle(opt, cb.checked);
       };
       list.appendChild(row);
@@ -379,8 +379,8 @@ class InputMultiselectCard extends HTMLElement {
   }
 
   _submit(closeDropdown = true) {
-    // ── Default action: update the input_multiselect entity ──
-    this._hass.callService("input_multiselect", "set_options", {
+    // ── Update the selection for the entity ──
+    this._hass.callService("input_multiselect", "set_value", {
       entity_id: this.config.entity,
       options: this._localSelection,
     });
