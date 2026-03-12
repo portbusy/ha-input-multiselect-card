@@ -161,8 +161,11 @@ class InputMultiselectCard extends HTMLElement {
           border-radius: 4px; 
         }
         .chips-container {
-          display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;
+          display: flex; gap: 4px; margin-top: 4px;
+          overflow-x: auto; padding-bottom: 2px;
+          scrollbar-width: none; 
         }
+        .chips-container::-webkit-scrollbar { display: none; }
         .chip {
           background: var(--primary-color); color: white;
           font-size: 11px; font-weight: bold; border-radius: 12px;
@@ -253,13 +256,13 @@ class InputMultiselectCard extends HTMLElement {
     // ── Status vs Chips ──
     const statusEl = this.shadowRoot.getElementById("status");
     const chipsEl = this.shadowRoot.getElementById("chips");
-    
+
     if (this.config.show_chips) {
       if (statusEl) statusEl.style.display = "none";
       if (chipsEl) {
         chipsEl.style.display = "flex";
         chipsEl.innerHTML = ""; // clear old chips
-        
+
         if (this._localSelection.length === 0) {
           chipsEl.innerHTML = `<span class="state" style="font-size:11px;">0 selected</span>`;
         } else {
@@ -319,9 +322,9 @@ class InputMultiselectCard extends HTMLElement {
     } else {
       this._localSelection = this._localSelection.filter((o) => o !== opt);
     }
-    
+
     this._updateUI();
-    
+
     if (this.config.auto_submit) {
       this._submit(false); // auto-save without closing the dropdown automatically
     }
