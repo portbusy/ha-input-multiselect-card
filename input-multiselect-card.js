@@ -29,6 +29,11 @@ class InputMultiselectCardEditor extends HTMLElement {
         selector: { boolean: {} },
       },
       {
+        name: "show_search",
+        label: "Show Search Bar (filter options)",
+        selector: { boolean: {} },
+      },
+      {
         type: "expandable",
         name: "",
         title: "Interactions",
@@ -99,7 +104,7 @@ class InputMultiselectCard extends HTMLElement {
   }
 
   static getStubConfig() {
-    return { entity: "", name: "", icon: "", auto_submit: false, show_chips: false, tap_action: { action: "none" } };
+    return { entity: "", name: "", icon: "", auto_submit: false, show_chips: false, show_search: false, tap_action: { action: "none" } };
   }
 
   setConfig(config) {
@@ -175,6 +180,18 @@ class InputMultiselectCard extends HTMLElement {
           cursor: pointer; opacity: 0.8; font-size: 10px; padding: 2px;
         }
         .chip-remove:hover { opacity: 1; color: #ff5252; }
+        .search-container {
+          padding: 0 12px 8px 12px;
+          display: none;
+        }
+        .search-bar {
+          width: 100%; padding: 10px 14px; border-radius: 8px;
+          border: 1px solid var(--divider-color, #e0e0e0);
+          background: var(--card-background-color, white);
+          color: var(--primary-text-color);
+          box-sizing: border-box; font-family: inherit; font-size: 14px;
+        }
+        .search-bar:focus { outline: none; border-color: var(--primary-color); }
         .option-row {
           display: flex; align-items: center; background: var(--secondary-background-color);
           padding: 12px; border-radius: 12px; cursor: pointer;
@@ -198,6 +215,9 @@ class InputMultiselectCard extends HTMLElement {
           <ha-icon icon="mdi:chevron-down" class="chevron" id="chev"></ha-icon>
         </div>
         <div class="dropdown" id="drop">
+          <div class="search-container" id="search-cont">
+            <input type="text" id="search-input" class="search-bar" placeholder="Search..." autocomplete="off">
+          </div>
           <div id="list"></div>
           <button id="sub" class="submit-btn" disabled>SUBMIT</button>
         </div>
@@ -209,8 +229,28 @@ class InputMultiselectCard extends HTMLElement {
       this._isOpen = !this._isOpen;
       this.shadowRoot.getElementById("drop").classList.toggle("open", this._isOpen);
       this.shadowRoot.getElementById("chev").classList.toggle("open", this._isOpen);
-      if (this._isOpen) this._localSelection = [...this._selectedOptions];
+      if (this._isOpen) {
+        this._localSelection = [...this._selectedOptions];
+      } else {
+        // Clear search when closing
+        const searchInput = this.shadowRoot.getElementById("search-input");
+        if (searchInput.value !== "") {
+          searchInput.value = "";
+          searchInput.dispatchEvent(new Event("input"));
+        }
+      }
       this._updateUI();
+    };
+
+    // ── Search filtering ──
+    const searchInput = this.shadowRoot.getElementById("search-input");
+    searchInput.oninput = (e) => {
+      const val = e.target.value.toLowerCase();
+      const rows = this.shadowRoot.querySelectorAll(".option-row");
+      rows.forEach(row => {
+        const text = row.querySelector("span").textContent.toLowerCase();
+        row.style.display = text.includes(val) ? "flex" : "none";
+      });
     };
 
     // ── Submit ──
@@ -252,6 +292,14 @@ class InputMultiselectCard extends HTMLElement {
 
     const nameEl = this.shadowRoot.getElementById("card-name");
     if (nameEl) nameEl.textContent = name;
+
+    // ── Search Visibility ──
+    const searchCont = this.shadowRoot.getElementById("search-cont");
+    if (this.config.show_search && this._options.length > 0) {
+      searchCont.style.display = "block";
+    } else {
+      searchCont.style.display = "none";
+    }
 
     // ── Status vs Chips ──
     const statusEl = this.shadowRoot.getElementById("status");
