@@ -36,6 +36,29 @@ class InputMultiselectCardEditor extends HTMLElement {
       {
         type: "expandable",
         name: "",
+        title: "Styling (Bubble-card look)",
+        flatten: true,
+        schema: [
+          {
+            name: "corner_radius",
+            label: "Corner Radius (e.g. 24px)",
+            selector: { text: {} },
+          },
+          {
+            name: "icon_color",
+            label: "Icon Color",
+            selector: { text: {} },
+          },
+          {
+            name: "icon_bg_color",
+            label: "Icon Background Color",
+            selector: { text: {} },
+          },
+        ],
+      },
+      {
+        type: "expandable",
+        name: "",
         title: "Interactions",
         flatten: true,
         schema: [
@@ -292,6 +315,20 @@ class InputMultiselectCard extends HTMLElement {
 
     const nameEl = this.shadowRoot.getElementById("card-name");
     if (nameEl) nameEl.textContent = name;
+
+    // ── Apply Styling ──
+    const cardEl = this.shadowRoot.querySelector('ha-card');
+    if (this.config.corner_radius) cardEl.style.borderRadius = this.config.corner_radius;
+    else cardEl.style.removeProperty('border-radius');
+
+    const iconContainer = this.shadowRoot.querySelector('.icon-container');
+    if (iconContainer) {
+      if (this.config.icon_color) iconContainer.style.color = this.config.icon_color;
+      else iconContainer.style.removeProperty('color');
+
+      if (this.config.icon_bg_color) iconContainer.style.background = this.config.icon_bg_color;
+      else iconContainer.style.removeProperty('background');
+    }
 
     // ── Search Visibility ──
     const searchCont = this.shadowRoot.getElementById("search-cont");
