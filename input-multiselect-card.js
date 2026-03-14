@@ -220,6 +220,8 @@ class InputMultiselectCard extends HTMLElement {
           padding: 12px; border-radius: 12px; cursor: pointer;
         }
         .option-row.dragging { opacity: 0.5; border: 2px dashed var(--primary-color); }
+        .drag-over-top { box-shadow: inset 0 3px 0 var(--primary-color) !important; }
+        .drag-over-bottom { box-shadow: inset 0 -3px 0 var(--primary-color) !important; }
         .drag-handle { 
           margin-right: 8px; cursor: grab; font-size: 18px; color: var(--secondary-text-color);
           display: flex; align-items: center; justify-content: center; width: 24px;
@@ -324,12 +326,37 @@ class InputMultiselectCard extends HTMLElement {
       row.ondragover = (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
+        
+        const rect = row.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          row.classList.add("drag-over-top");
+          row.classList.remove("drag-over-bottom");
+        } else {
+          row.classList.add("drag-over-bottom");
+          row.classList.remove("drag-over-top");
+        }
+      };
+      
+      row.ondragleave = (e) => {
+        row.classList.remove("drag-over-top", "drag-over-bottom");
       };
       
       row.ondrop = (e) => {
         e.preventDefault();
+        const isBottom = row.classList.contains("drag-over-bottom");
+        row.classList.remove("drag-over-top", "drag-over-bottom");
+        
         const draggedIndex = parseInt(e.dataTransfer.getData("text/plain"));
-        const targetIndex = index;
+        let targetIndex = index;
+        
+        // Adjust logical insertion index based on visual position
+        if (isBottom && draggedIndex > targetIndex) {
+           targetIndex++;
+        } else if (!isBottom && draggedIndex < targetIndex) {
+           targetIndex--;
+        }
+
         if (draggedIndex !== targetIndex && !isNaN(draggedIndex)) {
           this._reorderOptions(draggedIndex, targetIndex);
         }
