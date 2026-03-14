@@ -36,7 +36,7 @@ class InputMultiselectCardEditor extends HTMLElement {
       {
         type: "expandable",
         name: "",
-        title: "Styling (Bubble-card look)",
+        title: "Styling",
         flatten: true,
         schema: [
           {
@@ -219,6 +219,12 @@ class InputMultiselectCard extends HTMLElement {
           display: flex; align-items: center; background: var(--secondary-background-color);
           padding: 12px; border-radius: 12px; cursor: pointer;
         }
+        .option-row.dragging { opacity: 0.5; border: 2px dashed var(--primary-color); }
+        .drag-handle { 
+          margin-right: 8px; cursor: grab; font-size: 18px; color: var(--secondary-text-color);
+          display: flex; align-items: center; justify-content: center; width: 24px;
+        }
+        .drag-handle:active { cursor: grabbing; }
         .option-row input { margin-right: 12px; width: 18px; height: 18px; accent-color: var(--primary-color); }
         .submit-btn {
           background: var(--primary-color); color: white; border: none; border-radius: 12px;
@@ -286,17 +292,73 @@ class InputMultiselectCard extends HTMLElement {
   _buildOptionList() {
     const list = this.shadowRoot.getElementById("list");
     list.innerHTML = "";
-    this._options.forEach((opt) => {
+    this._options.forEach((opt, index) => {
       const row = document.createElement("div");
       row.className = "option-row";
-      row.innerHTML = `<input type="checkbox" data-opt="${opt}" style="pointer-events: none;"><span>${opt}</span>`;
+      row.draggable = true;
+      row.dataset.index = index;
+      
+      row.innerHTML = `
+        <div class="drag-handle" title="Drag to reorder">⋮⋮</div>
+        <input type="checkbox" data-opt="${opt}" style="pointer-events: none;">
+        <span>${opt}</span>
+      `;
+      
       row.onclick = (e) => {
+        if (e.target.classList.contains("drag-handle")) return;
         const cb = row.querySelector("input");
         cb.checked = !cb.checked;
         this._handleToggle(opt, cb.checked);
       };
+
+      row.ondragstart = (e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", index);
+        row.classList.add("dragging");
+      };
+      
+      row.ondragend = (e) => {
+        row.classList.remove("dragging");
+      };
+      
+      row.ondragover = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      };
+      
+      row.ondrop = (e) => {
+        e.preventDefault();
+        const draggedIndex = parseInt(e.dataTransfer.getData("text/plain"));
+        const targetIndex = index;
+        if (draggedIndex !== targetIndex && !isNaN(draggedIndex)) {
+          this._reorderOptions(draggedIndex, targetIndex);
+        }
+      };
+
       list.appendChild(row);
     });
+  }
+
+  _reorderOptions(fromIndex, toIndex) {
+    const movedOpt = this._options.splice(fromIndex, 1)[0];
+    this._options.splice(toIndex, 0, movedOpt);
+    
+    // Sort local selection to match the new options order
+    this._localSelection.sort((a, b) => this._options.indexOf(a) - this._options.indexOf(b));
+
+    // Persist to backend
+    this._hass.callService("input_multiselect", "set_options", {
+      entity_id: this.config.entity,
+      options: this._options,
+    });
+    
+    this._hass.callService("input_multiselect", "set_value", {
+      entity_id: this.config.entity,
+      options: this._localSelection,
+    });
+
+    this._buildOptionList();
+    this._updateUI();
   }
 
   _updateUI() {
