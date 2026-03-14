@@ -378,12 +378,16 @@ class InputMultiselectCard extends HTMLElement {
     }
   }
 
-  _submit(closeDropdown = true) {
+  async _submit(closeDropdown = true) {
     // ── Update the selection for the entity ──
-    this._hass.callService("input_multiselect", "set_value", {
-      entity_id: this.config.entity,
-      options: this._localSelection,
-    });
+    try {
+      await this._hass.callService("input_multiselect", "set_value", {
+        entity_id: this.config.entity,
+        options: this._localSelection,
+      });
+    } catch (e) {
+      console.error(e);
+    }
 
     // ── Execute configured tap_action ──
     const tapAction = this.config.tap_action;
