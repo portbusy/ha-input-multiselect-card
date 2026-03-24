@@ -119,7 +119,10 @@ class InputMultiselectCard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._isOpen = false;
+    this._isRendered = false;
     this._localSelection = [];
+    this._options = [];
+    this._selectedOptions = [];
   }
 
   static getConfigElement() {
@@ -139,8 +142,11 @@ class InputMultiselectCard extends HTMLElement {
     this._stateObj = hass.states[this.config.entity];
     if (!this._stateObj) return;
 
-    this._options = this._stateObj.attributes.options || [];
-    this._selectedOptions = this._stateObj.attributes.selected_options || [];
+    // Defensive copies: never hold a direct reference to HA state attributes,
+    // as splice/push mutations on them can corrupt shared state or fail silently
+    // on proxy-backed state objects.
+    this._options = [...(this._stateObj.attributes.options || [])];
+    this._selectedOptions = [...(this._stateObj.attributes.selected_options || [])];
 
     if (!this._isOpen) {
       this._localSelection = [...this._selectedOptions];
